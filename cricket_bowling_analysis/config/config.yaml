@@ -1,0 +1,72 @@
+# config/config.yaml
+# -------------------
+# Central config for the entire project.
+# Every module reads from here. Nothing is hardcoded in any .py file.
+# Change a value here and it changes everywhere.
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+paths:
+  input_sessions:     "../input_videos"
+  processed_sessions: "../data/processed/sessions"
+  outputs:            "../outputs"
+
+# ── Cameras (3-camera setup) ──────────────────────────────────────────────────
+cameras:
+  side:
+    input_path:  "input_videos/side"
+    output_path: "outputs/side"
+  front:
+    input_path:  "input_videos/front"
+    output_path: "outputs/front"
+  back:
+    input_path:  "input_videos/back"
+    output_path: "outputs/back"
+
+# ── Camera Defaults ───────────────────────────────────────────────────────────
+camera:
+  fps: 30
+  width: 1920
+  height: 1080
+  reference_camera: "side"  # All offsets calculated relative to side camera
+
+# ── Sync ──────────────────────────────────────────────────────────────────────
+sync:
+  method:                     "audio_clap"
+  reference_camera:           "side"
+  flash_brightness_threshold: 200
+  audio_clap_energy_threshold: 0.8
+  max_reliable_drift_frames:  3
+
+# ── Pose (MediaPipe) ──────────────────────────────────────────────────────────
+pose:
+  min_detection_confidence: 0.3  # LOWERED for blurry videos (was 0.5)
+  min_tracking_confidence:  0.3  # LOWERED for blurry videos (was 0.5)
+  min_visibility:           0.3  # LOWERED to accept lower quality detections
+  smoothing_window:         5
+  smoothing_polyorder:      2
+
+# ── Ball (YOLOv8 + Centroid Tracking) ──────────────────────────────────────
+ball:
+  yolo_model_path:    "models/yolov8_cricket_ball.pt"
+  yolo_confidence:    0.4
+  tracker_max_distance: 100  # pixels - max distance ball can move between frames
+  tracker_max_age:    10     # frames to keep tracking without detection
+  tracker_n_init:     3      # detections needed to confirm track
+
+# ── Biomechanics ──────────────────────────────────────────────────────────────
+biomechanics:
+  bowling_arm: "right"
+  hip_velocity_threshold: 5.0
+  min_release_confidence: 0.3
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+storage:
+  backend: "csv"
+  csv_output_dir: "data/processed/sessions"
+
+  db:
+    host:     "localhost"
+    port:     5432
+    name:     "cricket_bowling"
+    user:     "postgres"
+    password: ""

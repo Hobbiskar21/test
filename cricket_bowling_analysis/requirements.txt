@@ -1,0 +1,35 @@
+# Core Dependencies
+opencv-python>=4.8.0
+numpy>=1.24.0
+scipy>=1.10.0
+pyyaml>=6.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+
+# YOLO Pose Detection (GPU support)
+ultralytics>=8.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Ball Tracking
+deep-sort-realtime>=1.3.0
+
+# Video Processing
+opencv-contrib-python>=4.8.0
+
+# Data Processing
+scikit-learn>=1.3.0
+
+# Optional: Storage Backends
+# pyarrow>=12.0.0  # For Parquet support
+# sqlalchemy>=2.0.0  # For database support
+# psycopg2-binary>=2.9.0  # For PostgreSQL support
+
+# Optional: UI
+# gradio>=3.40.0  # For web interface
+
+# Development
+# pytest>=7.4.0  # For testing
+# black>=23.0.0  # For code formatting
+# flake8>=6.0.0  # For linting

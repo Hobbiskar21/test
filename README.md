@@ -94,3 +94,4 @@ Trunk lateral flexion at release
 ```
 
 The metric CSVs are saved in each output folder, and the important metric overlays are shown in the final videos.
+The batting metrics CSV highlights `Front Knee Angle at Impact` as `KEY_METRIC` and includes a `how_calculated` column for every metric.

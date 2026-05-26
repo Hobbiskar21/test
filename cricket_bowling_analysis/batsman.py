@@ -191,20 +191,74 @@ def save_features_csv(output_path: Path, keypoints_data: np.ndarray) -> pd.DataF
     return df
 
 
-def save_metrics_csv(output_path: Path, features_df: pd.DataFrame) -> pd.DataFrame:
-    metrics_df = features_df[["frame_id", "weight_transfer", "front_knee_angle", "head_stability_index"]].copy()
-    metrics_df["weight_transfer_how_calculated"] = (
-        "Right-handed batter assumption: front side is left and back side is right. "
-        "Computed as front_hip_x / (back_hip_x + front_hip_x), clipped to 0-1."
-    )
-    metrics_df["front_knee_angle_how_calculated"] = (
-        "Right-handed batter assumption: front knee is left knee. "
-        "Angle in degrees at the front knee using front hip, front knee, and front ankle keypoints."
-    )
-    metrics_df["head_stability_index_how_calculated"] = (
-        "Uses nose x/y positions across the full video. "
-        "Computed as 1 - ((variance_x + variance_y) / head_position_range_squared), clipped to 0-1."
-    )
+def _impact_frame_from_phases(phases_df: pd.DataFrame) -> int:
+    impact_frames = phases_df.loc[phases_df["phase_name"].astype(str).str.lower() == "impact", "frame_id"].astype(int).tolist()
+    if impact_frames:
+        return impact_frames[len(impact_frames) // 2]
+    return int(phases_df["frame_id"].median()) if not phases_df.empty else 0
+
+
+def _feature_value_at_frame(features_df: pd.DataFrame, frame_id: int, column: str) -> float:
+    if features_df.empty or column not in features_df.columns:
+        return np.nan
+    distances = (features_df["frame_id"].astype(int) - int(frame_id)).abs()
+    row = features_df.loc[distances.idxmin()]
+    return _safe_numeric(row.get(column))
+
+
+def save_metrics_csv(output_path: Path, features_df: pd.DataFrame, phases_df: pd.DataFrame) -> pd.DataFrame:
+    impact_frame = _impact_frame_from_phases(phases_df)
+    impact_phase = "Impact"
+    if not phases_df.empty:
+        phase_rows = phases_df.loc[phases_df["frame_id"].astype(int) == impact_frame]
+        if not phase_rows.empty:
+            impact_phase = str(phase_rows.iloc[0]["phase_name"])
+
+    rows = [
+        {
+            "metric": "Weight Transfer (COM Shift)",
+            "value": round(_feature_value_at_frame(features_df, impact_frame, "weight_transfer"), 4),
+            "unit": "0-1 ratio",
+            "frame_id": impact_frame,
+            "phase": impact_phase,
+            "highlight": "",
+            "source_column": "weight_transfer",
+            "how_calculated": (
+                "Right-handed batter assumption: front side is left and back side is right. "
+                "Computed from hip x-coordinates as front_hip_x / (back_hip_x + front_hip_x), clipped to 0-1."
+            ),
+        },
+        {
+            "metric": "Front Knee Angle at Impact",
+            "value": round(_feature_value_at_frame(features_df, impact_frame, "front_knee_angle"), 3),
+            "unit": "degrees",
+            "frame_id": impact_frame,
+            "phase": impact_phase,
+            "highlight": "KEY_METRIC",
+            "source_column": "front_knee_angle",
+            "how_calculated": (
+                "Impact frame is the middle frame of the detected Impact phase. "
+                "For a right-handed batter, the front knee is the left knee. "
+                "The angle is measured at the front knee using front hip, front knee, and front ankle keypoints."
+            ),
+        },
+        {
+            "metric": "Head Stability Index",
+            "value": round(_feature_value_at_frame(features_df, impact_frame, "head_stability_index"), 4),
+            "unit": "0-1 index",
+            "frame_id": impact_frame,
+            "phase": impact_phase,
+            "highlight": "",
+            "source_column": "head_stability_index",
+            "how_calculated": (
+                "Uses nose x/y positions across the full video. "
+                "Computed as 1 - ((variance_x + variance_y) / head_position_range_squared), clipped to 0-1. "
+                "Higher value means the head stayed more stable."
+            ),
+        },
+    ]
+
+    metrics_df = pd.DataFrame(rows)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_df.to_csv(output_path, index=False)
     print(f"[BATSMAN TEST] Saved batting metrics CSV: {output_path}")
@@ -239,7 +293,15 @@ def save_batting_analysis_csv(output_path: Path, features_df: pd.DataFrame, phas
     return merged
 
 
-def draw_phase_angle_overlay(frame, keypoints, phase_name: str, front_knee_angle: float, show_angle: bool = True, right_handed=True):
+def draw_phase_angle_overlay(
+    frame,
+    keypoints,
+    phase_name: str,
+    front_knee_angle: float,
+    show_angle: bool = True,
+    right_handed=True,
+    impact_highlight: bool = False,
+):
     out = draw_coco_skeleton(frame, keypoints, radius=4, thickness=2)
     height, width = out.shape[:2]
     banner_h = min(68, max(48, int(height * 0.08)))
@@ -254,7 +316,8 @@ def draw_phase_angle_overlay(frame, keypoints, phase_name: str, front_knee_angle
     cv2.putText(out, title, (18, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.82, (0, 0, 0), 1, cv2.LINE_AA)
 
     if show_angle:
-        angle_text = f"Front knee angle: {front_knee_angle:.1f} deg"
+        label = "Front knee angle at impact" if impact_highlight else "Front knee angle"
+        angle_text = f"{label}: {front_knee_angle:.1f} deg"
         cv2.putText(out, angle_text, (18, y_text + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (30, 30, 30), 2, cv2.LINE_AA)
 
     if show_angle and keypoints is not None and len(keypoints) >= 17:
@@ -304,6 +367,8 @@ def render_phase_angle_video(output_path: Path, frames, raw_keypoints, phases_df
     for previous, current, frame_id in zip(phase_values, phase_values[1:], phases_df['frame_id'].tolist()[1:]):
         if current != previous:
             phase_changes.add(int(frame_id))
+    impact_frame = _impact_frame_from_phases(phases_df)
+    phase_changes.add(impact_frame)
 
     annotated_frames = []
     for frame_id, frame in enumerate(frames):
@@ -311,7 +376,14 @@ def render_phase_angle_video(output_path: Path, frames, raw_keypoints, phases_df
         angle = float(angles.get(frame_id, 0.0) or 0.0)
         keypoints = raw_keypoints[frame_id] if frame_id < len(raw_keypoints) else None
         show_angle = frame_id in phase_changes
-        labelled = draw_phase_angle_overlay(frame, keypoints, phase_name, angle, show_angle=show_angle)
+        labelled = draw_phase_angle_overlay(
+            frame,
+            keypoints,
+            phase_name,
+            angle,
+            show_angle=show_angle,
+            impact_highlight=(frame_id == impact_frame),
+        )
         annotated_frames.append(labelled)
         if frame_id in phase_changes:
             for _ in range(pause_frames):
@@ -381,8 +453,8 @@ def main() -> None:
 
     keypoints_data = flatten_keypoints_sequence(results["raw_keypoints"])
     features_df = save_features_csv(output_dir / "metrics_csv" / f"{video_path.stem}_batting_features.csv", keypoints_data)
-    metrics_df = save_metrics_csv(output_dir / "metrics_csv" / f"{video_path.stem}_batting_metrics.csv", features_df)
     phases_df = save_phases_csv(output_dir / "phases_csv" / f"{video_path.stem}_batting_phases.csv", keypoints_data)
+    metrics_df = save_metrics_csv(output_dir / "metrics_csv" / f"{video_path.stem}_batting_metrics.csv", features_df, phases_df)
     analysis_df = save_batting_analysis_csv(output_dir / "analysis_csv" / f"{video_path.stem}_batting_analysis.csv", features_df, phases_df)
     phase_video = render_phase_angle_video(
         output_dir / "video" / f"{video_path.stem}_phase_angles.mp4",

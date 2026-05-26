@@ -55,26 +55,56 @@ def clear_output(target: str) -> Path:
     return output_path
 
 
+def clear_all_outputs() -> list[Path]:
+    cleared_paths = []
+    for target in ("bowler", "batsman"):
+        cleared_paths.append(clear_output(target))
+
+    root_metrics = (workspace_root() / "outputs" / "test_output" / "metrics_csv").resolve()
+    test_output_root = (workspace_root() / "outputs" / "test_output").resolve()
+    if test_output_root in root_metrics.parents and root_metrics.exists():
+        shutil.rmtree(root_metrics, onerror=_on_rm_error)
+
+    return cleared_paths
+
+
 def choose_target() -> str:
     print("\nWhat do you want to clear?")
     print("  1. bowler")
     print("  2. batsman")
+    print("  3. all")
 
-    choices = {"1": "bowler", "2": "batsman", "bowler": "bowler", "batsman": "batsman"}
+    choices = {
+        "1": "bowler",
+        "2": "batsman",
+        "3": "all",
+        "bowler": "bowler",
+        "batsman": "batsman",
+        "all": "all",
+    }
     while True:
         choice = input("Enter choice: ").strip().lower()
         if choice in choices:
             return choices[choice]
-        print("Please enter 1, 2, bowler, or batsman.")
+        print("Please enter 1, 2, 3, bowler, batsman, or all.")
 
 
 def main() -> None:
     target = choose_target()
-    output_path = _safe_output_path(target)
+    if target == "all":
+        output_path = (workspace_root() / "outputs" / "test_output").resolve()
+    else:
+        output_path = _safe_output_path(target)
 
     confirm = input(f"Clear {target} outputs at {output_path}? [y/N]: ").strip().lower()
     if confirm not in {"y", "yes"}:
         print("Clear cancelled.")
+        return
+
+    if target == "all":
+        cleared_paths = clear_all_outputs()
+        for cleared_path in cleared_paths:
+            print(f"Cleared output folder: {cleared_path}")
         return
 
     cleared_path = clear_output(target)
